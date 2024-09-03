@@ -14,7 +14,7 @@ pip install -e .
 
 ## Train an MDLM model
 ```bash
-python src/starter_discrete_diff/main.py \
+python src/main.py \
     mode=train \
     parameterization=mdlm \
     model=tiny \
@@ -37,7 +37,7 @@ python src/starter_discrete_diff/main.py \
 
 ## Sample from the trained model
 ```bash
-python src/starter_discrete_diff/main.py \
+python src/main.py \
     mode=sample \
     parameterization=mdlm \
     model=tiny \
@@ -71,7 +71,7 @@ python src/starter_discrete_diff/main.py \
 
 ## Sample-based evaluation
 ```bash
-python src/starter_discrete_diff/main.py \
+python src/main.py \
     mode=eval \
     parameterization=mdlm \
     model=tiny \
