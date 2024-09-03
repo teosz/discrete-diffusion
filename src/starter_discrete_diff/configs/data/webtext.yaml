@@ -1,0 +1,5 @@
+train: webtext
+valid: webtext
+tokenizer_name_or_path: gpt2
+wrap: True
+streaming: False

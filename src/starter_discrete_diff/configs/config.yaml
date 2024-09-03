@@ -1,0 +1,175 @@
+defaults:
+  - _self_
+  - /callbacks:
+      [
+        checkpoint_every_n_steps,
+        learning_rate_monitor,
+        text_throughput,
+        grad_norm,
+      ]
+  - /data: openwebtext-split
+  - /model: small
+  - /strategy: ddp
+  - /noise: loglinear
+  - /lr_scheduler: constant_warmup
+  # sedd / mdlm / ar
+  - /parameterization: sedd
+
+mode: train # train /sample / eval
+# Defaults (from orig. work)
+# MDLM: False, SEDD: True
+time_conditioning: True
+# T: 0 -> continuous time
+# T > 0 -> number of diffusion steps, eg 1000
+T: 0
+# seed: 1
+compile: False
+# Set here, so that it scales with number of accum. steps (more accum -> less freq eval)
+eval_every: 5_000
+
+data_preprocess:
+  data_cache: "./datasets"
+  min_seq_len: -1
+  # Model's context length
+  seq_len: ${model.length}
+  group_text: true
+  remove_text: true
+  num_seqs: -1
+  add_bos: False
+  add_eos: True
+
+loader:
+  global_batch_size: 32
+  eval_global_batch_size: ${.global_batch_size}
+  # Note: batch_size and eval_batch_size are **per machine**
+  batch_size: ${div_up:${.global_batch_size}, ${eval:${trainer.devices} * ${trainer.num_nodes}}}
+  eval_batch_size: ${div_up:${.eval_global_batch_size}, ${eval:${trainer.devices} * ${trainer.num_nodes}}}
+  # TODO: shouldn't it be divided by the number of gpu per node?
+  num_workers: 32
+  #num_workers: 8
+  pin_memory: True
+  persistent_workers: True
+
+training:
+  ema: 0.9999
+  antithetic_sampling: True
+  importance_sampling: False
+  sampling_eps: 1e-5
+  change_of_variables: False
+
+tokenizer:
+  name: gpt2
+
+optim:
+  name: adamw
+  weight_decay: 0.0
+  lr: 3e-4
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1e-8
+
+trainer:
+  _target_: lightning.Trainer
+  accelerator: cuda
+  num_nodes: 1
+  devices: 1
+  accumulate_grad_batches: ${div_up:${loader.global_batch_size}, ${eval:${trainer.devices} * ${loader.batch_size} * ${trainer.num_nodes}}}
+  gradient_clip_val: 1.0
+  precision: "bf16-mixed"
+  num_sanity_val_steps: 2
+  max_steps: 1_000_000
+  log_every_n_steps: 10
+  limit_train_batches: 1.0 # train on full dataset, can be used to toggle quick run
+  limit_val_batches: 1.0 # validate on full dataset, can be used to toggle quick run
+  # Eval every `eval_every` gradient steps, correctly account for gradient accumulations
+  val_check_interval: ${eval:${trainer.accumulate_grad_batches} * ${eval_every}}
+  check_val_every_n_epoch: null # Ensure that we do eval every val_check_interval batch (if not set, will reject if an epoch has less steps)
+  #use_distributed_sampler: false  # don't replace the fault-tolerant ddp sampler
+  benchmark: true
+
+wandb:
+  project: text-diffusion
+  notes: ""
+  group: null
+  job_type: null
+  name: null
+  tags:
+    - ${noise.type}
+    - ${data.train}
+    - ${data.valid}
+
+hydra:
+  run:
+    dir: ./outputs/${data.train}/${now:%Y.%m.%d}/${now:%H%M%S}
+  job:
+    chdir: true
+
+checkpointing:
+  # Use custom `save_dir` if, e.g., saving to S3 bucket, otherwise leave this parameter as is
+  save_dir: ${cwd:}
+  # Note: `checkpoints` path should correspond to `checkpoint_every_n_steps.dirpath`
+  resume_from_ckpt: true
+  resume_ckpt_path: ${.save_dir}/checkpoints/last.ckpt
+
+eval:
+  valid:
+    n_samples: 16
+
+  ppl_with_ar:
+    run: True
+    model: gpt2-large
+    batch_size: 8
+
+  mauve:
+    run: False
+    num_rounds: 5
+    max_num_tokens: 100
+    batch_size: 8
+
+  vendi:
+    run: False
+    model: gpt2-large
+    batch_size: 8
+    normalize_features: False
+
+  diversity:
+    run: False
+    #repetition_rates: 20, 100
+################# LOADED FROM MDLM
+
+# TODO: include the sampling args
+# sampling:
+#   predictor: ddpm_cache  # analytic, ddpm, ddpm_cache
+#   steps: 128
+#   noise_removal: True
+#   # TODO(yair): @subham, why aren't these params under `eval`?
+#   num_sample_batches: 2  # Total samples: `num_gpus` * `loader.eval_batch_size` * num_sample_batches
+#   num_sample_log: 2
+#   semi_ar: False
+#   stride_length: 1
+#   num_strides: 1
+#   length: null  # Optionally sample with a smaller sequence length; if length = 100, sample 100 tokens instead of 1024
+#   # TODO: have a sampling eps argument?
+
+# cond_sampling:
+#   strategy: prefix
+#   prefix_len: 50
+#   length: 100
+#   n_samples: 1000
+#   n_gen_per_ref: 5
+
+# TODO: move to an other config?
+# timing:
+#   n_timings: 16
+#   seq_lengths: 64, 128, 256, 512, 1024, 2048
+#   n_steps: 32, 64, 128, 256
+
+# TODO: move to an other config?
+#eval:
+#  checkpoint_path: ''  # Used to evaluate a checkpoint after training.
+#  disable_ema: False
+#  compute_generative_perplexity: False
+#  perplexity_batch_size: 8
+#  compute_perplexity_on_sanity: False
+#  gen_ppl_eval_model_name_or_path: gpt2-large  # gpt2-large, meta-llama/Llama-2-7b-hf
+#  generate_samples: True

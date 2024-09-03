@@ -1,0 +1,40 @@
+name: mdlm
+
+log_loss_buckets: -1
+
+
+sampling:
+  uncond:
+    run: False
+    # Shared
+    num_samples: 1024
+    batch_size: 32
+    from_ema: True
+
+    # Passed to `sample`
+    #n_samples: ${..batch_size}
+    num_steps: 1024
+    seq_len: 1024
+    sampler: ancestral
+    cache_preds: False
+    add_bos: False
+    add_eos: False
+
+  cond_prefix:
+    run: False
+    # Shared
+    num_samples: 1024
+    batch_size: 32
+    from_ema: True
+
+    dataset: webtext
+    seq_len: 100
+    prefix_len: 50
+    num_cont_per_prefix: 5
+    min_seq_len: 1024
+
+    num_steps: 1024
+    sampler: ancestral
+    cache_preds: False
+    add_bos: False
+    add_eos: False
